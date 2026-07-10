@@ -399,11 +399,10 @@ td.actions { white-space: nowrap; }
       </div>
 
       <!-- 重复 -->
-      <div class="form-group" id="repeatGroup">
+      <div class="form-group hidden" id="repeatGroup">
         <label>重复方式</label>
         <div class="radio-group">
-          <label><input type="radio" name="repeat" value="0" checked> 单次</label>
-          <label><input type="radio" name="repeat" value="1"> 每天</label>
+          <label><input type="radio" name="repeat" value="1" checked> 每天</label>
           <label><input type="radio" name="repeat" value="2"> 每周</label>
           <label><input type="radio" name="repeat" value="3"> 每小时</label>
         </div>
@@ -412,7 +411,7 @@ td.actions { white-space: nowrap; }
       <!-- 最大次数 -->
       <div class="form-group">
         <label for="formMaxCount">最大执行次数</label>
-        <input type="number" id="formMaxCount" min="1" value="1" style="width:120px">
+        <input type="number" id="formMaxCount" min="0" value="1" style="width:120px">
         <div style="font-size:12px;color:var(--text-dim);margin-top:4px">设置为 0 表示无限制</div>
       </div>
 
@@ -484,7 +483,7 @@ function actionBadge(a) {
   const cls = ['badge-shutdown','badge-restart','badge-lock','badge-command'][a]||'';
   return '<span class="badge '+cls+'">'+ACTIONS[a]+'</span>';
 }
-const REPEATS = ['单次','每天','每周','每小时'];
+const REPEATS = ['每天','每周','每小时'];
 function repeatBadge(r) {
   const cls = ['badge-once','badge-daily','badge-weekly','badge-hourly'][r]||'';
   return '<span class="badge '+cls+'">'+REPEATS[r]+'</span>';
@@ -541,7 +540,8 @@ async function deleteTask(id) {
 }
 
 async function toggleTask(id, current) {
-  await api('PATCH','/api/tasks/'+id, { enabled: !current });
+  // 重新启用时重置执行次数
+  await api('PATCH','/api/tasks/'+id, { enabled: !current, executed: current ? undefined : 0 });
   loadTasks();
 }
 
@@ -557,7 +557,7 @@ function openNewTask() {
   document.getElementById('formDateMode').value = 'today';
   document.getElementById('formDate').value = todayStr();
   document.getElementById('customDateGroup').classList.add('hidden');
-  document.querySelector('input[name="repeat"][value="0"]').checked = true;
+  document.querySelector('input[name="repeat"][value="1"]').checked = true;
   document.querySelector('input[name="missed"][value="0"]').checked = true;
   // Reset time mode to absolute
   document.querySelector('input[name="timeMode"][value="absolute"]').checked = true;
@@ -565,7 +565,9 @@ function openNewTask() {
   document.getElementById('relativeTimeGroup').classList.add('hidden');
   document.getElementById('formAction').value = '0';
   onActionChange();
-  document.getElementById('repeatGroup').classList.remove('hidden');
+  if (parseInt(document.getElementById('formMaxCount').value) !== 1) {
+    document.getElementById('repeatGroup').classList.remove('hidden');
+  }
   document.getElementById('commandGroup').classList.add('hidden');
   clearPresetActive();
   // Set default time to next rounded 5 min
@@ -604,7 +606,8 @@ async function editTask(id) {
     document.getElementById('formDate').value = dateStr;
   }
 
-  document.querySelector('input[name="repeat"][value="'+t.repeat+'"]').checked = true;
+  const repRadio = document.querySelector('input[name="repeat"][value="'+t.repeat+'"]');
+  if (repRadio) repRadio.checked = true;
   if (t.repeat>0) document.getElementById('repeatGroup').classList.remove('hidden');
   document.getElementById('formMaxCount').value = t.max_count;
   if (t.max_count===1) document.getElementById('repeatGroup').classList.add('hidden');
@@ -753,12 +756,13 @@ document.getElementById('saveBtn').addEventListener('click', async function() {
     missed_policy: missedPolicy
   };
 
-  // Validate max count >= 1 for non-repeating tasks
-  if (repeat===0 && maxCount===0) payload.max_count = 1;
-  if (payload.max_count===0 && repeat===0) payload.max_count = 1;
+  // Validate max count: repeat tasks need a positive max count
+  if (payload.max_count===0 && repeat>0) payload.max_count = 0;
 
   try {
     if (editingId) {
+      // 编辑时重置执行次数
+      payload.executed = 0;
       await api('PATCH','/api/tasks/'+editingId, payload);
     } else {
       await api('POST','/api/tasks', payload);

@@ -128,6 +128,7 @@ func handleTasks(w http.ResponseWriter, r *http.Request) {
 		t.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 		t.CreatedAt = time.Now()
 		t.Executed = 0
+		t.MaxCount = 0 // 0 = unlimited
 		t.Enabled = true
 		storage.Add(&t)
 		w.WriteHeader(201)
